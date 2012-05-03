@@ -1,0 +1,49 @@
+The JavaScript tracer will apply run-time instrumentation to JavaScript code, allowing code execution to be traced for debugging purposes.
+
+The tracer is
+  * Transparent - application developers don't have to do anything special to enable it
+  * Accurate - it records method calls of interest, with parameters and return values
+  * Fast - a program does not become un-usably slow when tracing is enabled
+  * Small - the required code is about 2K when compressed, and about 1K when gzipped
+  * Installable on demand - the tracer can be installed as the program runs
+
+This is how we use it in Yahoo! Mail:
+
+YUI.add('tracer', function(Y)
+{
+    var oldUse = YUI.use,
+        aop = Y.comms.aop,
+        blacklist =
+        [
+            /\._loader[^.]*$/    // Don't weave loader function calls - there are too many!
+        ];
+
+    // Intercept calls to YUI.use() so we can weave any newly loaded code
+    YUI.use = YUI.prototype.use = function()
+    {
+        oldUse.apply(this, arguments);
+        weave();
+    }
+
+    function weave()
+    {
+        aop.weave('mail', yui.mail, blacklist);
+    }
+
+    aop.addAdvice(aop.Tracer);
+    weave();
+
+}, '1.0', { requires: [ 'comms-aop-weaver', 'comms-aop-tracer', 'mail-ui-actions-marker' ] });
+
+When we want to start tracing, all we have to do is Y.use('tracer').
+
+There are some things to keep in mind:
+
+* The tracer only traces methods on objects which have been woven. It gives you a pretty good picture of what's getting executed, but there will be stuff missing.
+
+* The tracer works by replacing existing functions. If you're in the habit of hanging data off your functions, the tracer might break your code. (Existing data gets copied to the intercept function, so this is only a problem if you save off a function, weave, and then modify the saved function.)
+
+* The tracer code is wrapped in YUI modules. If you're not using YUI, you'll have to change the wrapping.
+
+-Steve Francis
+sfrancisx@yahoo.com

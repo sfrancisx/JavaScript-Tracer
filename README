@@ -43,7 +43,7 @@ There are some things to keep in mind:
 
 * The tracer works by replacing existing functions. If you're in the habit of hanging data off your functions, the tracer might break your code. (Existing data gets copied to the intercept function, so this is only a problem if you save off a function, weave, and then modify the saved function.)
 
-* The tracer code is wrapped in YUI modules. If you're not using YUI, you'll have to change the wrapping.
+* The tracer code is wrapped in YUI modules. If you're not using YUI, you'll have to change the wrapping. Other than the wrapping, though, it's self-contained and doesn't rely on YUI.
 
 -Steve Francis
 sfrancisx@yahoo.com

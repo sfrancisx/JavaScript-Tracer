@@ -81,7 +81,9 @@ YUI.add('comms-aop-weaver', function(Y)
         weaveBlacklist = blacklist || weaveBlacklist;
         maxWeaveDepth = maxDepth || maxWeaveDepth;
 
+        inAdvice++;
         weave(ns, o, 1);
+        inAdvice--;
 
         for (i = 0; i < all.length; i++)
             delete all[i]._$marked$_;
@@ -157,8 +159,14 @@ YUI.add('comms-aop-weaver', function(Y)
     */
     function weave(ns, o, depth)
     {
-        var name, wovenFn, fullName,  prop, weaveIt, embedIx, own,
+        var name, wovenFn, fullName,  prop, weaveIt, embedIx, own, i,
             embedCount = embeds.length;
+
+        for (i = 0; i < window.frames.length; i++)
+        {
+            if (o == window.frames[i])
+                return;
+        }
 
         // if not a DOM element and not the global window object
         if (!o.getElementsByTagName && (o != window))
@@ -238,7 +246,7 @@ YUI.add('comms-aop-weaver', function(Y)
                     case 'object':
                         // guard against null as in JS null is an object
                         if (prop && (depth < maxWeaveDepth))
-                            weave(fullName, prop, depth);
+                            weave(fullName, prop, depth+1);
                         break;
                 }
             }
@@ -303,50 +311,57 @@ YUI.add('comms-aop-weaver', function(Y)
     * @param  {function} fn        The method to be advised/instrumented
     * @return {function}           The advised method
     */
-    function aspect(fullName, fn)
+    function aspect(fullName, fn, name)
     {
         return function()
         {
-            var retVal, beforeMsg, i, stack, j, s, reporting,
+            var retVal, beforeMsg, i, stack, j, s,
                 depth = callDepth,
-                _this = this,
                 args = arguments;
 
-            if (inAdvice)
-                return fn.apply(_this, args);
+            if (inAdvice || aop.paused)
+                return fn.apply(this, args);
 
             stack = getStack();
-            stack.reverse();
-            reporting = i = 0;
 
-            // Call the 'before' advice for non-woven functions we discovered on the stack. Note
-            // that the 'after' advice won't be called for these functions.
-            while (s = stack[i++])
+            stack.reverse();
+
+            // Call the 'before' advice for non-woven functions we discovered on the stack.
+            // Note that the 'after' advice won't be called for these functions.
+            i = j = 0;
+            if (stack.length)
             {
-                if (reporting || (s.fn != lastStack[j]))
-                {
-                    s.depth = ++callDepth;
-                    s.stack = 1;
-                    reporting = 1;
-                    beforeMsg = advice.before(s);
-                }
+                j = lastStack.length;
+                while (j && (lastStack[j-1].fn != stack[0].fn))
+                    j--;
             }
 
-            lastStack = stack;
+            lastStack.length = j;
+            stack.push({ fn: fn, name: fullName, args: args, n: name });
+
+            inAdvice++;
+
+            i = j ? 1 : 0;
+            while (s = stack[i++])
+            {
+                lastStack[j++] = s;
+                s.depth = j;
+                if (stack[i])
+                    s.stack = 1;
+                beforeMsg = advice.before(s);
+            }
 
             // run the before advice
-            inAdvice = 1;
-            beforeMsg = advice.before({ fn: fn, name: fullName, depth: ++callDepth, args: args });
-            inAdvice = 0;
+            inAdvice--;
             
-            retVal = fn.apply(_this, args);
+            retVal = fn.apply(this, args);
 
             // run the after advice(s), if any
-            inAdvice = 1;
+            inAdvice++;
             advice.after(beforeMsg, retVal);
-            inAdvice = 0;
+            inAdvice--;
 
-            // If the function returns an object, weave it, jsut because we can. The fullName
+            // If the function returns an object, weave it, just because we can. The fullName
             // here will be wrong - this object probably isn't being attached to 'this'.
             // I should probably indicate this somehow.
             if (retVal && (typeof retVal == 'object') || (typeof retVal == 'function'))

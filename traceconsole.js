@@ -41,10 +41,8 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
     Y.comms.log4js.register("traceconsole",
         function(logger, show, name)
         {
-            var w, doc, output, root, timer, verbose, showStack, tedious, status,
-                lastFrame = { depth: 0, idx: 0, created: 1 },
-                frames = [ ],
-                fnCount = { },
+            var w, doc, output, timer, verbose, showStack, tedious, status, paused, lastFrame, root, frames,
+                // fnCount = { },         // See the comment below about fnCount
                 /**
                  * A custom log4js appender for displaying tracer output.  This appender
                  * is incompatible with 'normal' logging. Normal appender expect
@@ -65,10 +63,12 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                      */
                     notify: function(entry)
                     {
+                        if (paused)
+                            return;
+
                         var frame = entry.msg;
 
-                        frame.idx = entry.id;
-                        frames[frame.idx] = frame;
+                        frame.idx = frames.push(frame) - 1;
 
                         if (typeof entry.msg != "object")
                         {
@@ -77,11 +77,15 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                             return;
                         }
 
-                        if (!frame.stack)
-                        {
-                            fnCount[frame.name] = fnCount[frame.name] || 0;
-                            fnCount[frame.name]++;
-                        }
+                        // This counts the number of times a particular function gets traced.  If tracing
+                        // makes the app unbearably slow, uncomment these lines (& the declaration above),
+                        // let the tracer run a while, and then break here.  Open a console window and
+                        // execute something like:
+                        //         for (name in fnCount) { if (fnCount[name] > 500) console.log(name + ": " + fnCount[name]); }
+                        // to see the most commonly traced methods.  Add those methods to the weaver's
+                        // blacklist.
+                        //if (!frame.stack)
+                        //    fnCount[frame.n || frame.name] = (fnCount[frame.n || frame.name] || 0) + 1;
 
                         while (lastFrame.depth > frame.depth - 1)
                             lastFrame = lastFrame.parent;
@@ -95,6 +99,12 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                             if (timer)
                                 clearTimeout(timer);
                             timer = setTimeout(expand, 100);
+                        }
+
+                        if ((frames.length - 1) % 500 == 0)
+                        {
+                            console.log("updating status to " + (frames.length -1));
+                            status.innerHTML = (frames.length - 1) + " methods traced.";
                         }
                     },
                     /**
@@ -128,6 +138,7 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
 
                                         '.expandable > .expandee { margin-left:5px;display:none }' +
                                         '.expandable.expanded > .expandee { display:block }' +
+                                        '.toolbutton { font-size:90%; margin:2px; float:right; }' +
                                     '</style>' +
                                 '</head>' +
                                 '<body class="fixed" style="padding:0;margin:0;font-size:77%;font-family:tahoma,verdana">' +
@@ -135,6 +146,8 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                                         '<input id="showStack" type="checkbox" class="check"></input><label for="showStack">Include Stack</label>' +
                                         '<input id="verbose" type="checkbox" class="check"></input><label for="verbose">Verbose</label>' +
                                         '<input id="tedious" type="checkbox" class="check"></input><label for="tedious">Tedious</label>' +
+                                        '<label for="pause" style="float:right;margin:3px">Pause</label><input id="pause" type="checkbox" style="float:right" class="check"></input>' +
+                                        '<button id="clear" class="toolbutton">Clear</button>' +
                                     '</div>' +
                                     '<div class="output">'+
                                         '<div id="frame_0"></div>' +
@@ -156,6 +169,8 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                         doc.getElementById("showStack").onclick = refresh;
                         doc.getElementById("verbose").onclick = update;
                         doc.getElementById("tedious").onclick = update;
+                        doc.getElementById("pause").onclick = pause;
+                        doc.getElementById("clear").onclick = clearAndRefresh;
                     },
                     /**
                      * Redraw the output. This method is public, but should
@@ -173,7 +188,7 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                         if (output)
                         {
                             output.innerHTML = '';
-                            for (var i = 0; i < frames.length; i++)
+                            for (var i = 1; i < frames.length; i++)
                             {
                                 if (frames[i])
                                     frames[i].created = 0;
@@ -184,12 +199,45 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                 },
                 refresh = a.refresh;
 
+            clear();
+
             logger.show = a.show;
             show && a.show();
 
-            root = lastFrame;
-
             return a;
+
+            /**
+             * Pause tracing.
+             * @method pause
+             * @private
+             */
+            function pause()
+            {
+                paused = doc.getElementById("pause").checked;
+                Y.comms.aop && (Y.comms.aop.paused = paused);
+            }
+
+            /**
+             * Reset the trace console's data
+             * @method clear
+             * @private
+             */
+            function clear()
+            {
+                root = lastFrame = { depth: 0, idx: 0, created: 1 };
+                frames = [ root ];
+            }
+
+            /**
+             * Clear the trace console
+             * @method clearAndRefresh
+             * @private
+             */
+            function clearAndRefresh()
+            {
+                clear();
+                refresh();
+            }
 
             /**
              * Update the output. Used when the verbose/tedious state changes.
@@ -202,7 +250,7 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                 tedious = doc.getElementById("tedious").checked;
 
                 var frame, el, inner, index,
-                    i = 0;
+                    i = 1;
 
                 for (; i < frames.length; i++)
                 {
@@ -347,7 +395,7 @@ YUI.add('comms-log4js-appenders-traceconsole', function(Y)
                 if (innerHTML)
                     el.innerHTML += innerHTML;
 
-                status.innerHTML = frames.length + " methods traced.";
+                status.innerHTML = (frames.length - 1) + " methods traced.";
             }
 
             /**

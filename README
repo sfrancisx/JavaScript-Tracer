@@ -45,5 +45,7 @@ There are some things to keep in mind:
 
 * The tracer code is wrapped in YUI modules. If you're not using YUI, you'll have to change the wrapping. Other than the wrapping, though, it's self-contained and doesn't rely on YUI.
 
+* The tracer uses log4js - https://github.com/sfrancisx/log4js.
+
 -Steve Francis
 sfrancisx@yahoo.com

@@ -52,6 +52,10 @@ YUI.add('comms-aop-tracer', function(Y)
     // and I don't use it.  Tell the logger not to do it.
     logger.noDate = 1;
 
+    // Uncomment this line if you have a lot of stuff in the global namespace that
+    // you don't want to weave.
+    //window._$woven$_ = 1;
+
     advice.before._$woven$_ = 1;
     advice.after._$woven$_ = 1;
 
